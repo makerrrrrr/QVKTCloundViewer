@@ -26,14 +26,7 @@ QVKTCloudViewer/
 └── world_points.txt   # 点云数据文件（.gitignore）
 ```
 
-## 构建方法
 
-```bash
-mkdir build
-cd build
-cmake ..
-cmake --build .
-```
 
 ## 使用说明
 
