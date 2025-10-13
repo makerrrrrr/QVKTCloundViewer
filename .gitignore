@@ -1,0 +1,6 @@
+build/
+*.user
+world_points.txt
+TrackballCamera操作指南.txt
+VTK管线流程图.txt
+VTK渲染管线学习文档.md
