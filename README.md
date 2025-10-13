@@ -41,12 +41,12 @@ cmake --build .
 
 ## 依赖项
 
-- Qt 6.x
-- VTK 9.x
+- Qt 6.9.3
+- VTK 9.5.2
 
 ## 开发环境
 
-- Windows 10/11
-- MSVC 或 MinGW
-- CMake 3.x+
+- Windows 11
+- MSVC
+- CMake 4.1.1
 
