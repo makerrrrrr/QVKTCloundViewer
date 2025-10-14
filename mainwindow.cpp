@@ -5,6 +5,7 @@
 #include <vtkSmartPointer.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
+#include <vtkPointData.h>
 #include <vtkVertexGlyphFilter.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkActor.h>
@@ -12,6 +13,7 @@
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkCamera.h>
 #include <vtkNamedColors.h>
+#include <vtkUnsignedCharArray.h>
 #include <QVTKOpenGLNativeWidget.h>
 #include <QFile>
 #include <QTextStream>
@@ -59,15 +61,15 @@ MainWindow::MainWindow(QWidget *parent) :
     // 第四步：执行数据管线（从文件读取点云数据）
     // ======================================================================== // 数据管线流程：文件 → vtkPoints → vtkPolyData → vtkFilter → 处理后的PolyData
     // 尝试多个可能的文件路径
-    QString filename = "world_points.txt";
+    QString filename = "world_points_with_color.txt";
     if (!QFile::exists(filename)) {
         // 如果在当前目录找不到，尝试项目根目录
-        filename = "../../world_points.txt";
+        filename = "../../world_points_with_color.txt";
         qDebug() << "尝试项目根目录:" << filename;
     }
     if (!QFile::exists(filename)) {
         // 如果还找不到，使用绝对路径
-        filename = "D:/QTProject/QVKTCloudViewer/world_points.txt";
+        filename = "D:/QTProject/QVKTCloudViewer/world_points_with_color.txt";
         qDebug() << "尝试绝对路径:" << filename;
     }
     
@@ -107,15 +109,18 @@ MainWindow::~MainWindow()
 }
 
 // ============================================================================
-// 数据管线函数：从文件读取点云数据
-// 流程：文件 → vtkPoints → vtkPolyData → vtkFilter → 可渲染数据
+// 数据管线函数：从文件读取点云数据（包含颜色信息）
+// 流程：文件 → vtkPoints + vtkColors → vtkPolyData → vtkFilter → 可渲染数据
 // ============================================================================
 vtkSmartPointer<vtkPolyData> MainWindow::createPointCloudFromFile(const QString& filename)
 {
     // ------------------------------------------------------------------------
-    // 数据管线第1步：从文件读取原始数据
+    // 数据管线第1步：从文件读取原始数据（坐标 + 颜色）
     // ------------------------------------------------------------------------
     auto points = vtkSmartPointer<vtkPoints>::New();
+    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    colors->SetNumberOfComponents(3);  // RGB三个分量
+    colors->SetName("Colors");         // 设置颜色数组名称
     
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -125,39 +130,73 @@ vtkSmartPointer<vtkPolyData> MainWindow::createPointCloudFromFile(const QString&
     
     QTextStream in(&file);
     int pointCount = 0;
-    // 逐行读取文件中的点坐标
+    bool firstLine = true;  // 标记是否为第一行（标题行）
+    
+    // 逐行读取文件中的点坐标和颜色
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
         if (line.isEmpty()) continue;  // 跳过空行
         
-        QStringList coords = line.split(' ', Qt::SkipEmptyParts);
-        if (coords.size() != 3) {
-            qDebug() << "跳过格式错误的行:" << line;
+        // 跳过第一行标题（X Y Z R G B）
+        if (firstLine) {
+            firstLine = false;
+            if (line.contains("X") && line.contains("Y") && line.contains("Z")) {
+                qDebug() << "检测到标题行，已跳过:" << line;
+                continue;
+            }
+        }
+        
+        QStringList values = line.split(' ', Qt::SkipEmptyParts);
+        if (values.size() != 6) {
+            qDebug() << "跳过格式错误的行 (需要6个值):" << line;
             continue;
         }
         
         // 解析x, y, z坐标
         bool ok;
-        double x = coords[0].toDouble(&ok);
+        double x = values[0].toDouble(&ok);
         if (!ok) continue;
-        double y = coords[1].toDouble(&ok);
+        double y = values[1].toDouble(&ok);
         if (!ok) continue;
-        double z = coords[2].toDouble(&ok);
+        double z = values[2].toDouble(&ok);
         if (!ok) continue;
+        
+        // 解析R, G, B颜色值（注意：文件中的颜色值是浮点数）
+        double r_double = values[3].toDouble(&ok);
+        if (!ok) continue;
+        double g_double = values[4].toDouble(&ok);
+        if (!ok) continue;
+        double b_double = values[5].toDouble(&ok);
+        if (!ok) continue;
+        
+        // 转换为整数颜色值
+        int r = static_cast<int>(r_double);
+        int g = static_cast<int>(g_double);
+        int b = static_cast<int>(b_double);
         
         // 将点插入到points容器中
         points->InsertNextPoint(x, y, z);
+        
+        // 将颜色值插入到colors容器中（VTK使用0-255的整数表示颜色）
+        unsigned char color[3] = {
+            static_cast<unsigned char>(r),
+            static_cast<unsigned char>(g),
+            static_cast<unsigned char>(b)
+        };
+        colors->InsertNextTypedTuple(color);
+        
         pointCount++;
     }
     
     file.close();
-    qDebug() << "成功读取" << pointCount << "个点云数据";
+    qDebug() << "成功读取" << pointCount << "个带颜色的点云数据";
 
     // ------------------------------------------------------------------------
     // 数据管线第2步：包装为VTK的PolyData数据结构
     // ------------------------------------------------------------------------
     auto polyData = vtkSmartPointer<vtkPolyData>::New();
-    polyData->SetPoints(points);  // 将点数据绑定到PolyData
+    polyData->SetPoints(points);           // 将点数据绑定到PolyData
+    polyData->GetPointData()->SetScalars(colors);  // 将颜色数据绑定到PolyData
 
     // ------------------------------------------------------------------------
     // 数据管线第3步：数据过滤处理（转换为可渲染的几何体）
@@ -186,7 +225,11 @@ vtkSmartPointer<vtkActor> MainWindow::createPointCloudActor(vtkSmartPointer<vtkP
     // - 输出：图形渲染指令（传递给OpenGL）
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputData(pointCloud);  // 连接数据管线的输出
-    // 到此：mapper知道了要渲染什么数据
+    
+    // 关键设置：使用点云数据中的颜色信息
+    mapper->SetScalarModeToUsePointData();  // 使用点数据中的标量（颜色）
+    mapper->SetColorModeToDirectScalars();  // 直接使用标量作为颜色（不通过查找表映射）
+    // 到此：mapper知道了要渲染什么数据以及如何处理颜色
 
     // ------------------------------------------------------------------------
     // 图形管线第2步：创建Actor（演员/可视化对象）
@@ -197,16 +240,15 @@ vtkSmartPointer<vtkActor> MainWindow::createPointCloudActor(vtkSmartPointer<vtkP
     // - 变换矩阵（位置、旋转、缩放）
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);  // 将Mapper连接到Actor
-    // 到此：actor知道了要渲染的数据，但外观还未设置
+    // 到此：actor知道了要渲染的数据，并将使用每个点自己的颜色
 
     // ------------------------------------------------------------------------
     // 图形管线第3步：设置Actor的外观属性
     // ------------------------------------------------------------------------
     // GetProperty()返回vtkProperty对象，用于设置外观
     actor->GetProperty()->SetPointSize(2);              // 点的屏幕尺寸（像素）
-    actor->GetProperty()->SetColor(0.0, 1.0, 0.0);      // RGB颜色：绿色
-    //                                  ^    ^    ^
-    //                                  R    G    B  （取值范围：0.0-1.0）
+    // 注意：不再设置统一的颜色，而是使用每个点自己的颜色
+    // actor->GetProperty()->SetColor() - 已移除，改为使用点云数据中的颜色
     
     // 其他可选属性（示例）：
     // actor->GetProperty()->SetOpacity(1.0);           // 不透明度（0.0透明，1.0不透明）
