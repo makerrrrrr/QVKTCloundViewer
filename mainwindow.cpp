@@ -61,15 +61,15 @@ MainWindow::MainWindow(QWidget *parent) :
     // 第四步：执行数据管线（从文件读取点云数据）
     // ======================================================================== // 数据管线流程：文件 → vtkPoints → vtkPolyData → vtkFilter → 处理后的PolyData
     // 尝试多个可能的文件路径
-    QString filename = "world_points_with_color.txt";
+    QString filename = "model_output_pointcloud.txt";
     if (!QFile::exists(filename)) {
         // 如果在当前目录找不到，尝试项目根目录
-        filename = "../../world_points_with_color.txt";
+        filename = "../../model_output_pointcloud.txt";
         qDebug() << "尝试项目根目录:" << filename;
     }
     if (!QFile::exists(filename)) {
         // 如果还找不到，使用绝对路径
-        filename = "D:/QTProject/QVKTCloudViewer/world_points_with_color.txt";
+        filename = "D:/QTProject/QVKTCloudViewer/model_output_pointcloud.txt";
         qDebug() << "尝试绝对路径:" << filename;
     }
     
@@ -117,10 +117,13 @@ vtkSmartPointer<vtkPolyData> MainWindow::createPointCloudFromFile(const QString&
     // ------------------------------------------------------------------------
     // 数据管线第1步：从文件读取原始数据（坐标 + 颜色）
     // ------------------------------------------------------------------------
+    //vtkPoints:用于存储点的坐标
+    //vtkColors:用于存储点的颜色
     auto points = vtkSmartPointer<vtkPoints>::New();
     auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
-    colors->SetNumberOfComponents(3);  // RGB三个分量
-    colors->SetName("Colors");         // 设置颜色数组名称
+    //告诉VTK，每3个数字=1个RGB颜色
+    colors->SetNumberOfComponents(3);  
+    colors->SetName("Colors");         // 设置颜色数组名称，用于后续在渲染器中使用
     
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
